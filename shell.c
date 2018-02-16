@@ -14,6 +14,7 @@ char **lsh_split_line(char *);
 int lsh_launch(char **);
 int lsh_execute(char **);
 int lsh_num_builtins(void);
+
 /*
   Function Declarations for builtin shell commands:
  */
@@ -24,11 +25,7 @@ int lsh_exit(char **);
 /*
   List of builtin commands, followed by their corresponding functions.
  */
-char *builtin_str[] = {
-  "cd",
-  "help",
-  "quit"
-};
+char *builtin_str[] = {"cd", "help", "quit"};
 
 int (*builtin_func[]) (char **) = {
   &lsh_cd,
@@ -142,6 +139,8 @@ char **lsh_split_line(char *line)
   char **tokens = malloc(bufsize * sizeof(char*));
   char **tmpTokens = malloc(bufsize * sizeof(char*));
   char *token;
+  int ind;
+  int allSpace;
 
   if (!tokens) {
     fprintf(stderr, "lsh: allocation error\n");
@@ -150,9 +149,22 @@ char **lsh_split_line(char *line)
 
   token = strtok(line, ";");
   while (token != NULL) {
-    printf("token = %s\n", token);
-    tmpTokens[index] = token;
-    index++;
+
+    ind = 0;
+    allSpace = 1;
+    while(token[ind] != '\0') {
+      if(token[ind] != ' '){
+        allSpace = 0;
+        break;
+      }
+      ind++;
+    }
+
+    if(!allSpace){
+      printf("token = %s\n", token);
+      tmpTokens[index] = token;
+      index++;
+    }
 
     if (index >= bufsize) {
       bufsize += LSH_TOK_BUFSIZE;
@@ -239,6 +251,7 @@ int lsh_launch(char **args)
         if (pid == 0) {
           // Child process
           if (execvp(tmpArgs[0], tmpArgs) == -1) {
+            
             perror("lsh");
           }
           exit(EXIT_FAILURE);
