@@ -6,13 +6,14 @@
 
 #define LSH_RL_BUFSIZE 1024
 #define LSH_TOK_BUFSIZE 64
-#define LSH_TOK_DELIM " \t\r\n\a;"
+#define LSH_TOK_DELIM " \t\r\n\a"
 
-void lsh_loop(void);
+void lsh_loop(char*);
 char *lsh_read_line(void);
 char **lsh_split_line(char *);
 int lsh_launch(char **);
 int lsh_execute(char **);
+int lsh_num_builtins(void);
 /*
   Function Declarations for builtin shell commands:
  */
@@ -26,7 +27,7 @@ int lsh_exit(char **);
 char *builtin_str[] = {
   "cd",
   "help",
-  "exit"
+  "quit"
 };
 
 int (*builtin_func[]) (char **) = {
@@ -38,30 +39,63 @@ int (*builtin_func[]) (char **) = {
 int main(int argc, char **argv)
 {
   // Load config files, if any.
+  int bufsize = LSH_RL_BUFSIZE;
+  char *buffer = malloc(sizeof(char) * bufsize);
+  if(argc > 1) {
+    FILE * fp;
+    fp = fopen ("cmd", "r");
+    char c;
+    int i = 0;
+    while(1) {
+      c = fgetc(fp);
+      if( c == EOF ) { 
+         buffer[i] = '\0';
+         break ;
+      }
+      else {
+        buffer[i] = c;
+        printf("%c", buffer[i]);
+        i++;
+      }
+    }
+    fclose(fp);
+  }
+  else {
+    buffer = NULL;
+  }
 
   // Run command loop.
-  lsh_loop();
+  lsh_loop(buffer);
 
   // Perform any shutdown/cleanup.
 
   return EXIT_SUCCESS;
 }
 
-void lsh_loop(void)
+void lsh_loop(char* cmd)
 {
   char *line;
   char **args;
   int status;
 
-  do {
-    printf("> ");
-    line = lsh_read_line();
-    args = lsh_split_line(line);
+  if(cmd != NULL) {
+    args = lsh_split_line(cmd);
     status = lsh_execute(args);
-
-    free(line);
     free(args);
-  } while (status);
+    exit(0);
+    printf("Finish!!!!");
+  }
+  else {
+    do {
+      printf("commands> ");
+      line = lsh_read_line();
+      args = lsh_split_line(line);
+      status = lsh_execute(args);
+
+      free(line);
+      free(args);
+    } while (status);
+  }
 }
 
 char *lsh_read_line(void)
@@ -116,6 +150,7 @@ char **lsh_split_line(char *line)
 
   token = strtok(line, ";");
   while (token != NULL) {
+    printf("token = %s\n", token);
     tmpTokens[index] = token;
     index++;
 
@@ -128,7 +163,7 @@ char **lsh_split_line(char *line)
       }
     }
 
-    token = strtok(NULL, " ;");
+    token = strtok(NULL, ";");
   }
   tmpTokens[index] = NULL;
   
@@ -138,6 +173,7 @@ char **lsh_split_line(char *line)
 
     token = strtok(tmpTokens[index], LSH_TOK_DELIM);
     while (token != NULL) {
+      printf("subToken = %s\n", token);
       tokens[position] = token;
       position++;
 
@@ -173,6 +209,9 @@ int lsh_launch(char **args)
   int bufsize = LSH_TOK_BUFSIZE;
   char **tmpArgs = malloc(bufsize * sizeof(char*));
 
+  int retVal;
+  int isBuiltin = 0;
+
   int i = 0;
   int j = 0;
   while(args[i] != NULL) {
@@ -183,26 +222,39 @@ int lsh_launch(char **args)
     }
     else {
       tmpArgs[j] = NULL;
-      pid = fork();
-      if (pid == 0) {
-        // Child process
-        if (execvp(tmpArgs[0], tmpArgs) == -1) {
-          perror("lsh");
+
+      isBuiltin = 0;
+      for (int i = 0; i < lsh_num_builtins(); i++) {
+        if (strcmp(tmpArgs[0], builtin_str[i]) == 0) {
+          retVal = (*builtin_func[i])(args);
+          if(retVal == 0) {
+            return retVal;
+          }
+          isBuiltin = 1;
         }
-        exit(EXIT_FAILURE);
-      } 
-      else if (pid < 0) {
-        // Error forking
-        perror("lsh");
-      } 
-      else {
-        // Parent process
-        do {
-          wpid = waitpid(pid, &status, WUNTRACED);
-        } 
-        while (!WIFEXITED(status) && !WIFSIGNALED(status));
       }
-      //////////printf("Finish\n");
+
+      if(!isBuiltin) {
+        pid = fork();
+        if (pid == 0) {
+          // Child process
+          if (execvp(tmpArgs[0], tmpArgs) == -1) {
+            perror("lsh");
+          }
+          exit(EXIT_FAILURE);
+        } 
+        else if (pid < 0) {
+          // Error forking
+          perror("lsh");
+        } 
+        else {
+          // Parent process
+          do {
+            wpid = waitpid(pid, &status, WUNTRACED);
+          } 
+          while (!WIFEXITED(status) && !WIFSIGNALED(status));
+        }
+      }
       
       free(tmpArgs);
       tmpArgs = malloc(bufsize * sizeof(char*));
@@ -258,18 +310,11 @@ int lsh_exit(char **args)
 
 int lsh_execute(char **args)
 {
-  int i;
 
   if (args[0] == NULL) {
     // An empty command was entered.
     return 1;
   }
-
-  /*for (i = 0; i < lsh_num_builtins(); i++) {
-    if (strcmp(args[0], builtin_str[i]) == 0) {
-      return (*builtin_func[i])(args);
-    }
-  }*/
 
   return lsh_launch(args);
 }
